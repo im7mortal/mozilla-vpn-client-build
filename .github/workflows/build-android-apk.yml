@@ -21,23 +21,27 @@ on:
       - main
       - master
       - working
-    paths:
-      - 'mozilla-vpn-client/**'
-      - 'Dockerfile.android'
-      - 'docker-build.sh'
-      - 'build-android-apk.sh'
-      - '.github/workflows/build-android-apk.yml'
+    # Removed paths filter to allow triggering on any push
+    # Uncomment below to only run when specific files change:
+    # paths:
+    #   - 'mozilla-vpn-client/**'
+    #   - 'Dockerfile.android'
+    #   - 'docker-build.sh'
+    #   - 'build-android-apk.sh'
+    #   - '.github/workflows/build-android-apk.yml'
   pull_request:
     branches:
       - main
       - master
       - working
-    paths:
-      - 'mozilla-vpn-client/**'
-      - 'Dockerfile.android'
-      - 'docker-build.sh'
-      - 'build-android-apk.sh'
-      - '.github/workflows/build-android-apk.yml'
+    # Removed paths filter to allow triggering on any PR
+    # Uncomment below to only run when specific files change:
+    # paths:
+    #   - 'mozilla-vpn-client/**'
+    #   - 'Dockerfile.android'
+    #   - 'docker-build.sh'
+    #   - 'build-android-apk.sh'
+    #   - '.github/workflows/build-android-apk.yml'
 
 jobs:
   build:
