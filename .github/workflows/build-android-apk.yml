@@ -52,8 +52,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
           fetch-depth: 1
+          
+      - name: Checkout and fix submodules
+        run: |
+          # Checkout main repository submodule
+          git submodule update --init --recursive mozilla-vpn-client || true
+          
+          # Now checkout submodules within mozilla-vpn-client
+          cd mozilla-vpn-client
+          
+          # Initialize submodules with more lenient settings
+          git submodule update --init --recursive --depth=1 || {
+            echo "Some submodules failed, trying to fix..."
+            # Try to update each submodule individually
+            git submodule foreach --recursive 'git fetch --all || true'
+            git submodule update --init --recursive --force || true
+          }
+          
+          # If glean submodule still fails, try to use a fallback
+          if [ ! -d "3rdparty/glean/.git" ]; then
+            echo "Glean submodule failed, attempting manual fix..."
+            cd 3rdparty
+            rm -rf glean
+            git clone --depth=1 https://github.com/mozilla/glean.git glean || true
+            cd ..
+          fi
+          
+          cd ..
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
