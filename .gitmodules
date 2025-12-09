@@ -1,0 +1,4 @@
+[submodule "mozilla-vpn-client"]
+	path = mozilla-vpn-client
+	url = https://github.com/mozilla-mobile/mozilla-vpn-client.git
+

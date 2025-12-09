@@ -1,0 +1,80 @@
+# Dockerfile for building Mozilla VPN Android APK
+FROM continuumio/miniconda3:latest
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    file \
+    git \
+    wget \
+    unzip \
+    curl \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV QT_VERSION=6.9.3
+ENV ANDROID_ARCH=android_arm64_v8a
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Use bash shell for all RUN commands
+SHELL ["/bin/bash", "-c"]
+
+# Create conda environment from env-android.yml
+WORKDIR /build
+COPY mozilla-vpn-client/env-android.yml /build/
+COPY mozilla-vpn-client/requirements.txt /build/
+COPY mozilla-vpn-client/taskcluster/scripts/requirements.txt /build/taskcluster/scripts/requirements.txt
+
+# Create conda environment
+RUN conda env create -f env-android.yml
+
+# Initialize conda in bashrc
+RUN echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate vpn-android" >> ~/.bashrc
+
+# Copy Android SDK setup script and android_sdk.txt
+COPY mozilla-vpn-client/scripts/android/conda_setup_sdk.sh /build/conda_setup_sdk.sh
+COPY mozilla-vpn-client/android_sdk.txt /build/
+
+# Set up Android SDK using official script
+RUN source /opt/conda/etc/profile.d/conda.sh && \
+    conda activate vpn-android && \
+    chmod +x /build/conda_setup_sdk.sh && \
+    cd /build && \
+    /build/conda_setup_sdk.sh
+
+# Create symlink for Qt's FindEGL.cmake which expects /opt/android/ndk
+# Qt's FindEGL.cmake uses a hardcoded path, so we need to create a symlink
+RUN mkdir -p /opt/android/ndk && \
+    if [ -d "/opt/conda/envs/vpn-android/android_home/ndk" ]; then \
+        NDK_VERSION=$(ls -1 /opt/conda/envs/vpn-android/android_home/ndk | head -1) && \
+        ln -sf /opt/conda/envs/vpn-android/android_home/ndk/$NDK_VERSION /opt/android/ndk/$NDK_VERSION; \
+    fi
+
+# Copy Qt setup script
+COPY mozilla-vpn-client/scripts/android/conda_setup_qt.sh /build/conda_setup_qt.sh
+
+# Set up Qt using official script
+RUN source /opt/conda/etc/profile.d/conda.sh && \
+    conda activate vpn-android && \
+    export QT_VERSION=${QT_VERSION:-6.9.3} && \
+    export ANDROID_ARCH=${ANDROID_ARCH:-android_arm64_v8a} && \
+    pip install -q aqtinstall && \
+    chmod +x /build/conda_setup_qt.sh && \
+    cd /build && \
+    /build/conda_setup_qt.sh
+
+# Set up PATH to include Android SDK tools
+# The conda activation scripts will set ANDROID_SDK_ROOT, ANDROID_NDK_ROOT, etc.
+ENV PATH=/opt/conda/envs/vpn-android/bin:/opt/conda/envs/vpn-android/android_home/platform-tools:$PATH
+
+# Copy build script into container
+COPY docker-build.sh /build/docker-build.sh
+RUN chmod +x /build/docker-build.sh
+
+# Default working directory
+WORKDIR /build
+
+# Default command - bash for manual operations (build script will override)
+CMD ["/bin/bash"]

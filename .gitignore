@@ -1,0 +1,21 @@
+# Build outputs
+release/*.apk
+release/*.aab
+
+# Docker
+.dockerignore
+
+# Build artifacts (keep .gitignore but ignore build dirs)
+mozilla-vpn-client/.tmp/
+mozilla-vpn-client/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

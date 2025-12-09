@@ -1,0 +1,144 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+      qt_version:
+        description: 'Qt version'
+        required: false
+        default: '6.9.3'
+        type: string
+  push:
+    branches:
+      - main
+      - master
+      - working
+    paths:
+      - 'mozilla-vpn-client/**'
+      - 'Dockerfile.android'
+      - 'docker-build.sh'
+      - 'build-android-apk.sh'
+      - '.github/workflows/build-android-apk.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+      - working
+    paths:
+      - 'mozilla-vpn-client/**'
+      - 'Dockerfile.android'
+      - 'docker-build.sh'
+      - 'build-android-apk.sh'
+      - '.github/workflows/build-android-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine build type
+        id: build_type
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "type=${{ github.event.inputs.build_type }}" >> $GITHUB_OUTPUT
+          else
+            echo "type=debug" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine Qt version
+        id: qt_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ github.event.inputs.qt_version }}" ]; then
+            echo "version=${{ github.event.inputs.qt_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=6.9.3" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.android
+          push: false
+          tags: mozilla-vpn-android-builder:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            QT_VERSION=${{ steps.qt_version.outputs.version }}
+
+      - name: Create release directory
+        run: mkdir -p release
+
+      - name: Build APK
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/mozilla-vpn-client:/build/mozilla-vpn-client" \
+            -v "${{ github.workspace }}/release:/output" \
+            -e QT_VERSION="${{ steps.qt_version.outputs.version }}" \
+            -e ANDROID_ARCH="android_arm64_v8a" \
+            -e BUILD_TYPE="${{ steps.build_type.outputs.type }}" \
+            mozilla-vpn-android-builder:latest \
+            /build/docker-build.sh
+
+      - name: List APK files
+        run: |
+          echo "Built APK files:"
+          ls -lh release/*.apk || echo "No APK files found"
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: android-apk-${{ steps.build_type.outputs.type }}
+          path: release/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs
+          path: |
+            release/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Create Release
+        if: |
+          github.event_name == 'workflow_dispatch' && 
+          steps.build_type.outputs.type == 'release' &&
+          github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.apk
+          tag_name: v${{ github.run_number }}
+          name: Android APK Build ${{ github.run_number }}
+          body: |
+            Android APK build from commit ${{ github.sha }}
+            
+            **Build Type:** ${{ steps.build_type.outputs.type }}
+            **Qt Version:** ${{ steps.qt_version.outputs.version }}
+            
+            APK files are attached.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
